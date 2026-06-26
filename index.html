@@ -1,11 +1,25 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js" crossorigin="anonymous"></script>
+    <meta charset="UTF-8">
+    <title>AI Vision Suite</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <style>
+        body { margin: 0; background: #000; display: flex; flex-direction: column; align-items: center; }
+        canvas { width: 100vw; height: 80vh; object-fit: contain; }
+        .controls { padding: 20px; color: white; text-align: center; }
+    </style>
 </head>
 <body>
+
     <video id="webcam" style="display:none" autoplay playsinline></video>
-    <canvas id="outputCanvas" width="640" height="480"></canvas>
+    <canvas id="outputCanvas"></canvas>
+    
+    <div class="controls">
+        <p id="status">Initializing AI Vision Suite...</p>
+        <button onclick="captureMemory()">Capture & Extract Data</button>
+    </div>
 
     <script type="module">
         import { FaceDetector, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js";
@@ -14,44 +28,52 @@
         const video = document.getElementById("webcam");
         const canvas = document.getElementById("outputCanvas");
         const ctx = canvas.getContext("2d");
+        const status = document.getElementById("status");
 
-        // 1. Initialize AI Model
-        async function initAI() {
+        // 1. Setup AI
+        async function init() {
             const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm");
             detector = await FaceDetector.createFromOptions(vision, { baseOptions: { modelAssetPath: `https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite` }, runningMode: "VIDEO" });
-            startCamera();
-        }
-
-        // 2. Start Camera
-        async function startCamera() {
+            
             const stream = await navigator.mediaDevices.getUserMedia({ video: true });
             video.srcObject = stream;
-            video.addEventListener("loadeddata", predictWebcam);
+            video.addEventListener("loadeddata", loop);
+            status.innerText = "Camera Active: Privacy & Memory Enabled";
         }
 
-        // 3. The Main Processing Loop
-        async function predictWebcam() {
-            // Draw raw video to canvas
+        // 2. The Unified Processing Loop
+        async function loop() {
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-            // Run AI Detection
             const detections = detector.detectForVideo(video, performance.now());
 
-            // 4. Transform/Modify Loop
-            if (detections.detections.length > 0) {
-                detections.detections.forEach(d => {
-                    const { originX, originY, width, height } = d.boundingBox;
-                    // Example: Privacy Filter (Blur effect on faces)
-                    ctx.filter = 'blur(20px)';
-                    ctx.drawImage(canvas, originX, originY, width, height, originX, originY, width, height);
-                    ctx.filter = 'none'; // Reset for next iteration
-                });
-            }
+            // A. Privacy Masking (Face Detection)
+            detections.detections.forEach(d => {
+                const { originX, originY, width, height } = d.boundingBox;
+                ctx.save();
+                ctx.filter = 'blur(20px)';
+                ctx.drawImage(canvas, originX, originY, width, height, originX, originY, width, height);
+                ctx.restore();
+            });
 
-            requestAnimationFrame(predictWebcam);
+            requestAnimationFrame(loop);
         }
 
-        initAI();
+        // 3. Memory Anchor (OCR Function)
+        window.captureMemory = async () => {
+            status.innerText = "Analyzing Context...";
+            const imgData = canvas.toDataURL('image/png');
+            const { data: { text } } = await Tesseract.recognize(imgData, 'eng');
+            
+            // Save to LocalStorage (The "Memory" aspect)
+            const memory = JSON.parse(localStorage.getItem('vision_memory') || "[]");
+            memory.push({ timestamp: new Date().toISOString(), text: text });
+            localStorage.setItem('vision_memory', JSON.stringify(memory));
+            
+            status.innerText = "Captured: " + text.substring(0, 30) + "...";
+            alert("Memory Stored! " + text.substring(0, 50));
+        };
+
+        init();
     </script>
 </body>
 </html>
