@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js" crossorigin="anonymous"></script>
+</head>
+<body>
+    <video id="webcam" style="display:none" autoplay playsinline></video>
+    <canvas id="outputCanvas" width="640" height="480"></canvas>
+
+    <script type="module">
+        import { FaceDetector, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js";
+
+        let detector;
+        const video = document.getElementById("webcam");
+        const canvas = document.getElementById("outputCanvas");
+        const ctx = canvas.getContext("2d");
+
+        // 1. Initialize AI Model
+        async function initAI() {
+            const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm");
+            detector = await FaceDetector.createFromOptions(vision, { baseOptions: { modelAssetPath: `https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite` }, runningMode: "VIDEO" });
+            startCamera();
+        }
+
+        // 2. Start Camera
+        async function startCamera() {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            video.srcObject = stream;
+            video.addEventListener("loadeddata", predictWebcam);
+        }
+
+        // 3. The Main Processing Loop
+        async function predictWebcam() {
+            // Draw raw video to canvas
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            // Run AI Detection
+            const detections = detector.detectForVideo(video, performance.now());
+
+            // 4. Transform/Modify Loop
+            if (detections.detections.length > 0) {
+                detections.detections.forEach(d => {
+                    const { originX, originY, width, height } = d.boundingBox;
+                    // Example: Privacy Filter (Blur effect on faces)
+                    ctx.filter = 'blur(20px)';
+                    ctx.drawImage(canvas, originX, originY, width, height, originX, originY, width, height);
+                    ctx.filter = 'none'; // Reset for next iteration
+                });
+            }
+
+            requestAnimationFrame(predictWebcam);
+        }
+
+        initAI();
+    </script>
+</body>
+</html>
